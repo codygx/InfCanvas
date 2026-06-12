@@ -33,12 +33,28 @@
       pointer-events: none;
       user-select: none;
     }
+    #toolBadge {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 1000;
+      padding: 8px 10px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.45);
+      color: #e3f7ff;
+      font: 12px/1.35 Consolas, "Courier New", monospace;
+      white-space: pre-line;
+      pointer-events: none;
+      user-select: none;
+    }
   </style>
 </head>
 <body>
 
 <canvas id="c"></canvas>
 <div id="versionBadge" aria-label="App version">InfCanvas v0.1.0</div>
+<div id="toolBadge" aria-label="Tool status"></div>
 
 <script>
 const canvas = document.getElementById("c");
@@ -47,6 +63,7 @@ let layoutIndex = 0;
 const APP_NAME = "InfCanvas";
 const APP_VERSION_FALLBACK = "0.1.0";
 const versionBadge = document.getElementById("versionBadge");
+const toolBadge = document.getElementById("toolBadge");
 
 function setVersionBadge(version) {
   if (!versionBadge) return;
@@ -67,6 +84,125 @@ function loadAppVersion() {
 }
 
 loadAppVersion();
+
+
+function defaultCrop() {
+  return { left: 0, top: 0, right: 0, bottom: 0 };
+}
+
+function normalizeCrop(crop) {
+  return {
+    left: Number(crop?.left) || 0,
+    top: Number(crop?.top) || 0,
+    right: Number(crop?.right) || 0,
+    bottom: Number(crop?.bottom) || 0
+  };
+}
+
+function getCropFor(obj) {
+  obj.crop = normalizeCrop(obj.crop || defaultCrop());
+  return obj.crop;
+}
+
+function getRenderBox(obj) {
+  const crop = getCropFor(obj);
+  const srcX = Math.max(0, Math.min(obj.img.width - 1, crop.left));
+  const srcY = Math.max(0, Math.min(obj.img.height - 1, crop.top));
+  const srcW = Math.max(1, obj.img.width - srcX - Math.max(0, crop.right));
+  const srcH = Math.max(1, obj.img.height - srcY - Math.max(0, crop.bottom));
+  const drawW = srcW * obj.scale;
+  const drawH = srcH * obj.scale;
+
+  return { srcX, srcY, srcW, srcH, drawW, drawH };
+}
+
+function adjustCrop(side, delta) {
+  if (!selectedImage || !selectedImage.img) return;
+  const crop = getCropFor(selectedImage);
+  const size = side === "left" || side === "right" ? selectedImage.img.width : selectedImage.img.height;
+  const opposite = side === "left" ? "right" : side === "right" ? "left" : side === "top" ? "bottom" : "top";
+  const maxAllowed = Math.max(0, size - 1 - crop[opposite]);
+  crop[side] = Math.max(0, Math.min(maxAllowed, crop[side] + delta));
+  draw();
+}
+
+function resetCrop() {
+  if (!selectedImage) return;
+  selectedImage.crop = defaultCrop();
+  draw();
+}
+
+function exportSelectedImage() {
+  if (!selectedImage || !selectedImage.img) {
+    console.log("No selected image to export");
+    return;
+  }
+
+  const { srcX, srcY, srcW, srcH } = getRenderBox(selectedImage);
+  const out = document.createElement("canvas");
+  out.width = srcW;
+  out.height = srcH;
+  const outCtx = out.getContext("2d");
+  outCtx.drawImage(selectedImage.img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+
+  out.toBlob(blob => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `selected_${Date.now()}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
+let zScanMode = false;
+let zScanIndex = -1;
+
+function setZScanFromSelection() {
+  if (!selectedImage) {
+    zScanIndex = images.length - 1;
+    return;
+  }
+  zScanIndex = images.indexOf(selectedImage);
+}
+
+function stepZScan(step) {
+  if (!images.length) return;
+  if (zScanIndex < 0) zScanIndex = images.length - 1;
+  zScanIndex += step;
+  if (zScanIndex < 0) zScanIndex = 0;
+  if (zScanIndex > images.length - 1) zScanIndex = images.length - 1;
+  selectedImage = images[zScanIndex] || null;
+  draw();
+}
+
+function updateToolBadge() {
+  if (!toolBadge) return;
+
+  const lines = [];
+  lines.push("Mouse: Drag image move | Empty drag pan | Wheel zoom | Shift+Wheel resize selected");
+  lines.push("Drop image files on canvas to place at cursor");
+  lines.push("Ctrl+S Save Layout | Ctrl+L Load Newest | Ctrl+Alt+E Export Selected PNG");
+  lines.push("Ctrl+[ / Ctrl+] reorder | Ctrl+Shift+[ / Ctrl+Shift+] send back/front");
+  lines.push("Crop: Alt+Arrows add crop | Alt+Shift+Arrows reduce | Alt+0 reset");
+  lines.push("Z Scan: Z toggle | , previous | . next");
+
+  if (selectedImage) {
+    const index = images.indexOf(selectedImage);
+    const crop = getCropFor(selectedImage);
+    lines.push(`Selected layer: ${index + 1}/${images.length}`);
+    lines.push(`Crop L${crop.left} T${crop.top} R${crop.right} B${crop.bottom}`);
+  } else {
+    lines.push("Selected layer: none");
+  }
+
+  if (zScanMode && zScanIndex >= 0) {
+    lines.push(`Z scan active on layer ${zScanIndex + 1}/${images.length}`);
+  }
+
+  toolBadge.textContent = lines.join("\n");
+}
 
 
 function bringForward() {
@@ -120,7 +256,8 @@ function saveLayout() {
     src: img.img.src,
     x: img.x,
     y: img.y,
-    scale: img.scale
+    scale: img.scale,
+    crop: normalizeCrop(img.crop || defaultCrop())
   }));
 
   fetch("http://localhost:9000", {
@@ -157,7 +294,8 @@ function loadLatestLayout() {
                 img,
                 x: obj.x,
                 y: obj.y,
-                scale: obj.scale
+                scale: obj.scale,
+                crop: normalizeCrop(obj.crop || defaultCrop())
               });
               draw();
             };
@@ -194,7 +332,8 @@ function loadLayoutByIndex(index) {
                 img,
                 x: obj.x,
                 y: obj.y,
-                scale: obj.scale
+                scale: obj.scale,
+                crop: normalizeCrop(obj.crop || defaultCrop())
               });
               draw();
             };
@@ -205,6 +344,12 @@ function loadLayoutByIndex(index) {
 
 
 document.addEventListener("keydown", e => {
+  if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "e") {
+    e.preventDefault();
+    exportSelectedImage();
+    return;
+  }
+
   // Ctrl+S = save
   if (e.ctrlKey && e.key === "s") {
     e.preventDefault();
@@ -218,6 +363,65 @@ document.addEventListener("keydown", e => {
   }
   
 }, { capture: true });
+
+window.addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey) return;
+
+  if (e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    zScanMode = !zScanMode;
+    setZScanFromSelection();
+    draw();
+    return;
+  }
+
+  if (zScanMode && e.key === ",") {
+    e.preventDefault();
+    stepZScan(-1);
+    return;
+  }
+
+  if (zScanMode && e.key === ".") {
+    e.preventDefault();
+    stepZScan(1);
+    return;
+  }
+
+  if (!selectedImage) return;
+
+  if (e.altKey && e.key === "0") {
+    e.preventDefault();
+    resetCrop();
+    return;
+  }
+
+  if (!e.altKey) return;
+
+  const delta = e.shiftKey ? -10 : 10;
+
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    adjustCrop("left", delta);
+    return;
+  }
+
+  if (e.key === "ArrowRight") {
+    e.preventDefault();
+    adjustCrop("right", delta);
+    return;
+  }
+
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    adjustCrop("top", delta);
+    return;
+  }
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    adjustCrop("bottom", delta);
+  }
+});
 
 window.addEventListener("keydown", e => {
 
@@ -347,21 +551,33 @@ function draw() {
 
   drawGrid();
 
-  images.forEach(obj => {
+  images.forEach((obj, index) => {
     if (!obj.img) return;
 
-    const w = obj.img.width * obj.scale;
-    const h = obj.img.height * obj.scale;
+    const { srcX, srcY, srcW, srcH, drawW, drawH } = getRenderBox(obj);
 
-    ctx.drawImage(obj.img, obj.x, obj.y, w, h);
+    const isScannedLayer = zScanMode && index === zScanIndex;
+    const isNeighborLayer = zScanMode && (index === zScanIndex - 1 || index === zScanIndex + 1);
+    ctx.globalAlpha = zScanMode ? (isScannedLayer ? 1 : (isNeighborLayer ? 0.55 : 0.1)) : 1;
+
+    ctx.drawImage(obj.img, srcX, srcY, srcW, srcH, obj.x, obj.y, drawW, drawH);
+    ctx.globalAlpha = 1;
+
+    if (isNeighborLayer) {
+      ctx.strokeStyle = index < zScanIndex ? "rgba(255,191,0,0.9)" : "rgba(255,50,160,0.9)";
+      ctx.lineWidth = 2 / scale;
+      ctx.strokeRect(obj.x, obj.y, drawW, drawH);
+    }
 
     // Draw selection outline
     if (obj === selectedImage) {
       ctx.strokeStyle = "rgba(0,255,255,0.8)";
       ctx.lineWidth = 3 / scale;
-      ctx.strokeRect(obj.x, obj.y, w, h);
+      ctx.strokeRect(obj.x, obj.y, drawW, drawH);
     }
   });
+
+  updateToolBadge();
 }
 
 function drawGrid() {
@@ -385,11 +601,10 @@ function drawGrid() {
 function getImageAtWorldPos(wx, wy) {
   for (let i = images.length - 1; i >= 0; i--) {
     const obj = images[i];
-    const w = obj.img.width * obj.scale;
-    const h = obj.img.height * obj.scale;
+    const { drawW, drawH } = getRenderBox(obj);
 
-    if (wx >= obj.x && wx <= obj.x + w &&
-        wy >= obj.y && wy <= obj.y + h) {
+    if (wx >= obj.x && wx <= obj.x + drawW &&
+        wy >= obj.y && wy <= obj.y + drawH) {
       return obj;
     }
   }
@@ -413,6 +628,7 @@ canvas.addEventListener("mousedown", e => {
   const hit = getImageAtWorldPos(wx, wy);
   if (hit) {
     selectedImage = hit;
+    if (zScanMode) setZScanFromSelection();
     dragImageOffsetX = wx - hit.x;
     dragImageOffsetY = wy - hit.y;
     dragging = true;
@@ -509,7 +725,8 @@ canvas.addEventListener("drop", e => {
         img,
         x: worldX,
         y: worldY,
-        scale: 1
+        scale: 1,
+        crop: defaultCrop()
       });
 
       draw();
