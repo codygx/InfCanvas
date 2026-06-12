@@ -27,6 +27,12 @@ InfCanvas is a local infinite canvas for arranging images, adjusting crop, and s
 - Mouse wheel to zoom camera.
 - Shift + mouse wheel to resize selected image.
 
+## On-Screen Overlays (HUD)
+
+- Top-right version badge shows the current app version from `VERSION`.
+- Bottom-left tool badge shows key controls, selected layer, and crop values.
+- Both overlays are visual-only right now (`pointer-events: none`), so they do not capture mouse hover/click events.
+
 ## Keyboard Shortcuts
 
 ### Save / Load
@@ -35,8 +41,8 @@ InfCanvas is a local infinite canvas for arranging images, adjusting crop, and s
 - `Ctrl+L`: Load newest saved layout.
 - `Ctrl+Shift+L`: Load the second newest layout.
 - `Ctrl+Alt+L`: Load the third newest layout.
-- `Ctrl+ArrowUp`: Move to newer layout in save history.
-- `Ctrl+ArrowDown`: Move to older layout in save history.
+- `Ctrl+ArrowDown`: Go back one layout (older) in save history.
+- `Ctrl+ArrowUp`: Go forward one layout (newer) in save history.
 
 ### Selected Image Export
 
