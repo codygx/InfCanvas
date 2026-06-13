@@ -33,11 +33,29 @@
       pointer-events: none;
       user-select: none;
     }
-    #toolBadge {
+    #toolbelt {
       position: fixed;
       left: 12px;
       bottom: 12px;
       z-index: 1000;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    #toolbeltToggle {
+      padding: 8px 10px;
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #d6f5ff;
+      font: 12px/1.2 Consolas, "Courier New", monospace;
+      cursor: pointer;
+      user-select: none;
+    }
+    #toolbeltToggle:hover {
+      background: rgba(0,0,0,0.75);
+    }
+    #toolBadge {
       padding: 8px 10px;
       border: 1px solid rgba(255,255,255,0.2);
       border-radius: 8px;
@@ -48,13 +66,19 @@
       pointer-events: none;
       user-select: none;
     }
+    #toolbelt.collapsed #toolBadge {
+      display: none;
+    }
   </style>
 </head>
 <body>
 
 <canvas id="c"></canvas>
 <div id="versionBadge" aria-label="App version">InfCanvas v0.1.0</div>
-<div id="toolBadge" aria-label="Tool status"></div>
+<div id="toolbelt">
+  <button id="toolbeltToggle" type="button" aria-controls="toolBadge" aria-expanded="true">Hide tools</button>
+  <div id="toolBadge" aria-label="Tool status"></div>
+</div>
 
 <script>
 const canvas = document.getElementById("c");
@@ -63,7 +87,26 @@ let layoutIndex = 0;
 const APP_NAME = "InfCanvas";
 const APP_VERSION_FALLBACK = "0.1.0";
 const versionBadge = document.getElementById("versionBadge");
+const toolbelt = document.getElementById("toolbelt");
+const toolbeltToggle = document.getElementById("toolbeltToggle");
 const toolBadge = document.getElementById("toolBadge");
+let toolbeltCollapsed = false;
+
+function updateToolbeltToggle() {
+  if (!toolbelt || !toolbeltToggle) return;
+  toolbelt.classList.toggle("collapsed", toolbeltCollapsed);
+  toolbeltToggle.textContent = toolbeltCollapsed ? "Show tools" : "Hide tools";
+  toolbeltToggle.setAttribute("aria-expanded", String(!toolbeltCollapsed));
+}
+
+if (toolbeltToggle) {
+  toolbeltToggle.addEventListener("click", () => {
+    toolbeltCollapsed = !toolbeltCollapsed;
+    updateToolbeltToggle();
+  });
+}
+
+updateToolbeltToggle();
 
 function setVersionBadge(version) {
   if (!versionBadge) return;

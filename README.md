@@ -87,3 +87,10 @@ InfCanvas is a local infinite canvas for arranging images, adjusting crop, and s
 - If save/load does not work, confirm `save_server.py` is running on port `9000`.
 - If the app page does not load, confirm the static server is running on port `8000`.
 - The bottom-left tool badge in the app shows key controls and selected layer/crop state.
+
+## HTML, DOM, and Rendering Mental Model
+
+- HTML source: blueprint text
+- DOM: live object model built from the blueprint
+- Rendered page: pixels painted from DOM + CSS + layout
+- Once parsed, the DOM diverges from original HTML source. JavaScript can add/remove/change nodes without changing the original file text.

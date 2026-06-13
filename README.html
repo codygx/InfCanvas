@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InfCanvas README</title>
+  <style>body {
+  margin: 2rem auto;
+  max-width: 900px;
+  padding: 0 1rem;
+  background: #0f1115;
+  color: #e6edf3;
+  font-family: Segoe UI, Roboto, Arial, sans-serif;
+  line-height: 1.55;
+}
+a { color: #8cc8ff; }
+pre, code {
+  font-family: Consolas, 'Courier New', monospace;
+}
+pre {
+  background: #171b24;
+  border: 1px solid #2a3140;
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow: auto;
+}
+blockquote {
+  border-left: 4px solid #2f6feb;
+  margin-left: 0;
+  padding-left: 0.9rem;
+  color: #9fb0c2;
+}
+table {
+  border-collapse: collapse;
+}
+th, td {
+  border: 1px solid #2a3140;
+  padding: 0.4rem 0.6rem;
+}
+.notice {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #2f6feb;
+  border-radius: 8px;
+  background: #152238;
+}</style>
+</head>
+<body>
+  <h1 id="infcanvas">InfCanvas</h1>
+<p>InfCanvas is a local infinite canvas for arranging images, adjusting crop, and saving/loading layouts.</p>
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>Windows</li>
+<li>Python 3 installed and available in PATH</li>
+<li>Microsoft Edge (used by the launcher script)</li>
+</ul>
+<h2 id="quick-start">Quick Start</h2>
+<ol>
+<li>Double-click <code>run_infcanvas.bat</code>.</li>
+<li>When prompted for a layout folder, press Enter to use the default:
+   - <code>C:\Apps\InfCanvas\</code></li>
+<li>The script starts:
+   - A static file server on <code>http://localhost:8000</code>
+   - A save/load server on <code>http://localhost:9000</code></li>
+<li>Edge opens to <code>http://localhost:8000/InfCanvas.html</code>.</li>
+</ol>
+<h2 id="basic-usage">Basic Usage</h2>
+<ul>
+<li>Drag and drop an image file onto the canvas to add it.</li>
+<li>Left click an image to select it.</li>
+<li>Drag selected image to move it.</li>
+<li>Drag empty canvas space to pan camera.</li>
+<li>Mouse wheel to zoom camera.</li>
+<li>Shift + mouse wheel to resize selected image.</li>
+</ul>
+<h2 id="on-screen-overlays-hud">On-Screen Overlays (HUD)</h2>
+<ul>
+<li>Top-right version badge shows the current app version from <code>VERSION</code>.</li>
+<li>Bottom-left tool badge shows key controls, selected layer, and crop values.</li>
+<li>Both overlays are visual-only right now (<code>pointer-events: none</code>), so they do not capture mouse hover/click events.</li>
+</ul>
+<h2 id="keyboard-shortcuts">Keyboard Shortcuts</h2>
+<h3 id="save-load">Save / Load</h3>
+<ul>
+<li><code>Ctrl+S</code>: Save current layout to a timestamped JSON file.</li>
+<li><code>Ctrl+L</code>: Load newest saved layout.</li>
+<li><code>Ctrl+Shift+L</code>: Load the second newest layout.</li>
+<li><code>Ctrl+Alt+L</code>: Load the third newest layout.</li>
+<li><code>Ctrl+ArrowDown</code>: Go back one layout (older) in save history.</li>
+<li><code>Ctrl+ArrowUp</code>: Go forward one layout (newer) in save history.</li>
+</ul>
+<h3 id="selected-image-export">Selected Image Export</h3>
+<ul>
+<li><code>Ctrl+Alt+E</code>: Export selected image as PNG (with current crop applied).</li>
+</ul>
+<h3 id="layer-ordering-selected-image">Layer Ordering (selected image)</h3>
+<ul>
+<li><code>Ctrl+]</code>: Bring selected layer forward by one.</li>
+<li><code>Ctrl+[</code>: Send selected layer backward by one.</li>
+<li><code>Ctrl+Shift+]</code>: Bring selected layer to front.</li>
+<li><code>Ctrl+Shift+[</code>: Send selected layer to back.</li>
+<li>Fallback keys:</li>
+<li><code>Ctrl+Shift+Home</code>: Bring selected layer to front.</li>
+<li><code>Ctrl+Shift+End</code>: Send selected layer to back.</li>
+</ul>
+<h3 id="crop-controls-selected-image">Crop Controls (selected image)</h3>
+<ul>
+<li><code>Alt+ArrowLeft</code>: Increase left crop by 10 px.</li>
+<li><code>Alt+ArrowRight</code>: Increase right crop by 10 px.</li>
+<li><code>Alt+ArrowUp</code>: Increase top crop by 10 px.</li>
+<li><code>Alt+ArrowDown</code>: Increase bottom crop by 10 px.</li>
+<li><code>Alt+Shift+ArrowLeft</code>: Reduce left crop by 10 px.</li>
+<li><code>Alt+Shift+ArrowRight</code>: Reduce right crop by 10 px.</li>
+<li><code>Alt+Shift+ArrowUp</code>: Reduce top crop by 10 px.</li>
+<li><code>Alt+Shift+ArrowDown</code>: Reduce bottom crop by 10 px.</li>
+<li><code>Alt+0</code>: Reset crop to full image.</li>
+</ul>
+<h3 id="z-scan-mode-layer-inspection">Z-Scan Mode (layer inspection)</h3>
+<ul>
+<li><code>Z</code>: Toggle Z-scan mode.</li>
+<li><code>,</code>: Step to previous layer (while Z-scan is active).</li>
+<li><code>.</code>: Step to next layer (while Z-scan is active).</li>
+</ul>
+<h2 id="save-files">Save Files</h2>
+<ul>
+<li>Saved layouts are written as:</li>
+<li><code>layout_YYYY-MM-DD_HH-MM-SS.json</code></li>
+<li>Save location is the folder you provide at launcher prompt.</li>
+</ul>
+<h2 id="tips">Tips</h2>
+<ul>
+<li>If save/load does not work, confirm <code>save_server.py</code> is running on port <code>9000</code>.</li>
+<li>If the app page does not load, confirm the static server is running on port <code>8000</code>.</li>
+<li>The bottom-left tool badge in the app shows key controls and selected layer/crop state.</li>
+</ul>
+<h2 id="html-dom-and-rendering-mental-model">HTML, DOM, and Rendering Mental Model</h2>
+<ul>
+<li>HTML source: blueprint text</li>
+<li>DOM: live object model built from the blueprint</li>
+<li>Rendered page: pixels painted from DOM + CSS + layout</li>
+<li>Once parsed, the DOM diverges from original HTML source. JavaScript can add/remove/change nodes without changing the original file text.</li>
+</ul>
+</body>
+</html>
