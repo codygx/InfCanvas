@@ -2,6 +2,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 from datetime import datetime
+from urllib.parse import unquote
 
 DEFAULT_SAVE_PATH = os.path.dirname(os.path.abspath(__file__))
 SAVE_PATH = os.path.abspath(os.path.expanduser(os.environ.get("LAYOUT_DIR", DEFAULT_SAVE_PATH)))
@@ -10,8 +11,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def get_safe_filename(self):
+        filename = unquote(self.path.lstrip("/"))
+        if not filename:
+            return None
+        if os.path.basename(filename) != filename:
+            return None
+        if not filename.endswith(".json"):
+            return None
+        return filename
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -34,7 +45,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # File path → return the JSON file
-        filename = self.path.lstrip("/")
+        filename = self.get_safe_filename()
+        if not filename:
+            self.send_response(400)
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(b"Invalid filename")
+            return
+
         file_path = os.path.join(SAVE_PATH, filename)
 
         if os.path.exists(file_path):
@@ -69,7 +87,33 @@ class Handler(BaseHTTPRequestHandler):
         self.send_cors()
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(b'"OK"')
+        self.wfile.write(json.dumps({"status": "OK", "file": os.path.basename(file_path)}).encode("utf-8"))
+
+    def do_DELETE(self):
+        os.makedirs(SAVE_PATH, exist_ok=True)
+
+        filename = self.get_safe_filename()
+        if not filename:
+            self.send_response(400)
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(b"Invalid filename")
+            return
+
+        file_path = os.path.join(SAVE_PATH, filename)
+        if not os.path.exists(file_path):
+            self.send_response(404)
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(b"File not found")
+            return
+
+        os.remove(file_path)
+        self.send_response(200)
+        self.send_cors()
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps({"status": "deleted", "file": filename}).encode("utf-8"))
 
 server = HTTPServer(("localhost", 9000), Handler)
 print("Save server running on http://localhost:9000")

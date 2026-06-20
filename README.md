@@ -48,6 +48,11 @@ InfCanvas is a local infinite canvas for arranging images, adjusting crop, and s
 
 - `Ctrl+Alt+E`: Export selected image as PNG (with current crop applied).
 
+### Delete
+
+- `Delete` or `Backspace`: Remove selected image layer from the current canvas.
+- `Ctrl+Delete`: Delete the currently loaded layout JSON file from disk (with confirmation).
+
 ### Layer Ordering (selected image)
 
 - `Ctrl+]`: Bring selected layer forward by one.
@@ -81,6 +86,7 @@ InfCanvas is a local infinite canvas for arranging images, adjusting crop, and s
 - Saved layouts are written as:
   - `layout_YYYY-MM-DD_HH-MM-SS.json`
 - Save location is the folder you provide at launcher prompt.
+- The save server now also supports deleting a specific layout file via HTTP `DELETE /<filename>.json`.
 
 ## Tips
 

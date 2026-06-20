@@ -84,6 +84,7 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 let layoutIndex = 0;
+let currentLayoutFile = null;
 const APP_NAME = "InfCanvas";
 const APP_VERSION_FALLBACK = "0.1.0";
 const versionBadge = document.getElementById("versionBadge");
@@ -220,6 +221,14 @@ function stepZScan(step) {
   draw();
 }
 
+function isDeleteKey(e) {
+  return e.key === "Delete" || e.key === "Del" || e.code === "Delete";
+}
+
+function isBackspaceKey(e) {
+  return e.key === "Backspace" || e.code === "Backspace";
+}
+
 function updateToolBadge() {
   if (!toolBadge) return;
 
@@ -227,6 +236,7 @@ function updateToolBadge() {
   lines.push("Mouse: Drag image move | Empty drag pan | Wheel zoom | Shift+Wheel resize selected");
   lines.push("Drop image files on canvas to place at cursor");
   lines.push("Ctrl+S Save Layout | Ctrl+L Load Newest | Ctrl+Alt+E Export Selected PNG");
+  lines.push("Delete/Backspace remove selected layer | Ctrl+Delete remove loaded layout file");
   lines.push("Layouts: Ctrl+ArrowDown back one | Ctrl+ArrowUp forward one");
   lines.push("Ctrl+[ / Ctrl+] reorder | Ctrl+Shift+[ / Ctrl+Shift+] send back/front");
   lines.push("Crop: Alt+Arrows add crop | Alt+Shift+Arrows reduce | Alt+0 reset");
@@ -287,6 +297,57 @@ function sendToBack() {
   }
 }
 
+function deleteSelectedImage() {
+  if (!selectedImage) return;
+
+  const i = images.indexOf(selectedImage);
+  if (i === -1) return;
+
+  images.splice(i, 1);
+  selectedImage = null;
+
+  if (zScanMode) {
+    if (!images.length) {
+      zScanIndex = -1;
+    } else {
+      zScanIndex = Math.min(i, images.length - 1);
+      selectedImage = images[zScanIndex] || null;
+    }
+  }
+
+  draw();
+}
+
+function deleteCurrentLayoutFile() {
+  if (!currentLayoutFile) {
+    console.log("No loaded layout file selected to delete");
+    return;
+  }
+
+  const fileToDelete = currentLayoutFile;
+  const confirmed = window.confirm(`Delete layout file ${fileToDelete}?`);
+  if (!confirmed) return;
+
+  fetch("http://localhost:9000/" + encodeURIComponent(fileToDelete), {
+    method: "DELETE"
+  })
+    .then(res => {
+      if (!res.ok) throw new Error(`Delete failed with status ${res.status}`);
+      return res.json().catch(() => null);
+    })
+    .then(() => {
+      console.log("Deleted layout:", fileToDelete);
+      if (currentLayoutFile === fileToDelete) {
+        currentLayoutFile = null;
+      }
+      if (layoutIndex > 0) layoutIndex -= 1;
+      updateToolBadge();
+    })
+    .catch(err => {
+      console.error("Failed to delete layout file:", err);
+    });
+}
+
 
 function resize() {
   canvas.width = window.innerWidth;
@@ -308,8 +369,17 @@ function saveLayout() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
-  }).then(() => {
-    console.log("Layout saved");
+  }).then(res => res.json())
+    .then(payload => {
+      if (payload && payload.file) {
+        currentLayoutFile = payload.file;
+      }
+      layoutIndex = 0;
+      console.log("Layout saved", payload && payload.file ? `as ${payload.file}` : "");
+      updateToolBadge();
+    })
+    .catch(err => {
+      console.error("Failed to save layout:", err);
   });
 }
 
@@ -318,11 +388,14 @@ function loadLatestLayout() {
     .then(res => res.json())
     .then(files => {
       if (!files.length) {
+        currentLayoutFile = null;
         console.log("No saved layouts found");
         return;
       }
 
       const latest = files[0];
+      currentLayoutFile = latest;
+      layoutIndex = 0;
       console.log("Loading:", latest);
 
       fetch("http://localhost:9000/" + latest)
@@ -352,7 +425,10 @@ function loadLayoutByIndex(index) {
   fetch("http://localhost:9000/")
     .then(res => res.json())
     .then(files => {
-      if (!files.length) return;
+      if (!files.length) {
+        currentLayoutFile = null;
+        return;
+      }
 
       // Clamp index to valid range
       if (index < 0) index = 0;
@@ -361,6 +437,7 @@ function loadLayoutByIndex(index) {
       layoutIndex = index; // update global index
 
       const file = files[index];
+      currentLayoutFile = file;
       console.log("Loading:", file);
 
       fetch("http://localhost:9000/" + file)
@@ -405,7 +482,35 @@ document.addEventListener("keydown", e => {
     e.preventDefault();
     loadLatestLayout();
   }
+
+  if (e.ctrlKey && isDeleteKey(e)) {
+    e.preventDefault();
+    console.log("[delete] Ctrl+Delete pressed", { key: e.key, code: e.code, currentLayoutFile });
+    deleteCurrentLayoutFile();
+    return;
+  }
   
+}, { capture: true });
+
+window.addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!isDeleteKey(e) && !isBackspaceKey(e)) return;
+
+  console.log("[delete] key pressed", {
+    key: e.key,
+    code: e.code,
+    hasSelection: Boolean(selectedImage),
+    imageCount: images.length
+  });
+
+  if (!selectedImage) {
+    console.log("[delete] ignored - no selected image");
+    return;
+  }
+
+  e.preventDefault();
+  deleteSelectedImage();
+  console.log("[delete] selected image removed");
 }, { capture: true });
 
 window.addEventListener("keydown", e => {
@@ -676,6 +781,7 @@ canvas.addEventListener("mousedown", e => {
     dragImageOffsetX = wx - hit.x;
     dragImageOffsetY = wy - hit.y;
     dragging = true;
+    draw();
     return;
   }
 
@@ -683,6 +789,7 @@ canvas.addEventListener("mousedown", e => {
   dragging = true;
   lastX = e.clientX;
   lastY = e.clientY;
+  draw();
 });
 
 window.addEventListener("mouseup", () => dragging = false);

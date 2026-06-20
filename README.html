@@ -93,6 +93,11 @@ th, td {
 <ul>
 <li><code>Ctrl+Alt+E</code>: Export selected image as PNG (with current crop applied).</li>
 </ul>
+<h3 id="delete">Delete</h3>
+<ul>
+<li><code>Delete</code> or <code>Backspace</code>: Remove selected image layer from the current canvas.</li>
+<li><code>Ctrl+Delete</code>: Delete the currently loaded layout JSON file from disk (with confirmation).</li>
+</ul>
 <h3 id="layer-ordering-selected-image">Layer Ordering (selected image)</h3>
 <ul>
 <li><code>Ctrl+]</code>: Bring selected layer forward by one.</li>
@@ -126,6 +131,7 @@ th, td {
 <li>Saved layouts are written as:</li>
 <li><code>layout_YYYY-MM-DD_HH-MM-SS.json</code></li>
 <li>Save location is the folder you provide at launcher prompt.</li>
+<li>The save server now also supports deleting a specific layout file via HTTP <code>DELETE /&lt;filename&gt;.json</code>.</li>
 </ul>
 <h2 id="tips">Tips</h2>
 <ul>
