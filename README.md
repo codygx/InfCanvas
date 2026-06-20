@@ -53,6 +53,15 @@ InfCanvas is a local infinite canvas for arranging images, adjusting crop, and s
 - `Delete` or `Backspace`: Remove selected image layer from the current canvas.
 - `Ctrl+Delete`: Delete the currently loaded layout JSON file from disk (with confirmation).
 
+### Multi-Select and Group Move
+
+- `M`: Toggle multi-select mode on/off.
+- In multi-select mode, click images to add them to selection.
+- In multi-select mode, `Ctrl+Click` on a selected image toggles it off.
+- Drag any selected image to move the whole selected group.
+- In multi-select mode, drag on empty canvas to box-select images.
+- Hold `Shift` while box-selecting to add to the current selection.
+
 ### Layer Ordering (selected image)
 
 - `Ctrl+]`: Bring selected layer forward by one.

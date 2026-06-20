@@ -202,6 +202,20 @@ function exportSelectedImage() {
 
 let zScanMode = false;
 let zScanIndex = -1;
+let multiSelectMode = false;
+
+let dragMode = "none";
+let dragWorldX = 0;
+let dragWorldY = 0;
+let dragSelectionStart = [];
+
+let marqueeActive = false;
+let marqueeAdditive = false;
+let marqueeStartScreenX = 0;
+let marqueeStartScreenY = 0;
+let marqueeCurrentScreenX = 0;
+let marqueeCurrentScreenY = 0;
+let marqueeBaseSelection = new Set();
 
 function setZScanFromSelection() {
   if (!selectedImage) {
@@ -229,6 +243,100 @@ function isBackspaceKey(e) {
   return e.key === "Backspace" || e.code === "Backspace";
 }
 
+function setSelectionFromSet(nextSet) {
+  selectedImages.clear();
+  nextSet.forEach(obj => {
+    if (images.includes(obj)) selectedImages.add(obj);
+  });
+
+  selectedImage = null;
+  for (let i = images.length - 1; i >= 0; i--) {
+    if (selectedImages.has(images[i])) {
+      selectedImage = images[i];
+      break;
+    }
+  }
+}
+
+function clearSelection() {
+  selectedImages.clear();
+  selectedImage = null;
+}
+
+function selectOnly(obj) {
+  if (!obj) {
+    clearSelection();
+    return;
+  }
+  selectedImages.clear();
+  selectedImages.add(obj);
+  selectedImage = obj;
+}
+
+function addToSelection(obj) {
+  if (!obj) return;
+  selectedImages.add(obj);
+  selectedImage = obj;
+}
+
+function removeFromSelection(obj) {
+  if (!obj) return;
+  selectedImages.delete(obj);
+  if (selectedImage === obj) {
+    selectedImage = null;
+    for (let i = images.length - 1; i >= 0; i--) {
+      if (selectedImages.has(images[i])) {
+        selectedImage = images[i];
+        break;
+      }
+    }
+  }
+}
+
+function screenToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const cx = clientX - rect.left - canvas.width / 2;
+  const cy = clientY - rect.top - canvas.height / 2;
+  return {
+    wx: (cx / scale) - offsetX,
+    wy: (cy / scale) - offsetY
+  };
+}
+
+function getMarqueeBoundsWorld() {
+  const a = screenToWorld(marqueeStartScreenX, marqueeStartScreenY);
+  const b = screenToWorld(marqueeCurrentScreenX, marqueeCurrentScreenY);
+  return {
+    left: Math.min(a.wx, b.wx),
+    right: Math.max(a.wx, b.wx),
+    top: Math.min(a.wy, b.wy),
+    bottom: Math.max(a.wy, b.wy)
+  };
+}
+
+function updateSelectionFromMarquee() {
+  const bounds = getMarqueeBoundsWorld();
+  const hits = new Set();
+
+  images.forEach(obj => {
+    const { drawW, drawH } = getRenderBox(obj);
+    const objLeft = obj.x;
+    const objRight = obj.x + drawW;
+    const objTop = obj.y;
+    const objBottom = obj.y + drawH;
+    const overlaps = !(objRight < bounds.left || objLeft > bounds.right || objBottom < bounds.top || objTop > bounds.bottom);
+    if (overlaps) hits.add(obj);
+  });
+
+  if (marqueeAdditive) {
+    const combined = new Set(marqueeBaseSelection);
+    hits.forEach(obj => combined.add(obj));
+    setSelectionFromSet(combined);
+  } else {
+    setSelectionFromSet(hits);
+  }
+}
+
 function updateToolBadge() {
   if (!toolBadge) return;
 
@@ -237,10 +345,12 @@ function updateToolBadge() {
   lines.push("Drop image files on canvas to place at cursor");
   lines.push("Ctrl+S Save Layout | Ctrl+L Load Newest | Ctrl+Alt+E Export Selected PNG");
   lines.push("Delete/Backspace remove selected layer | Ctrl+Delete remove loaded layout file");
+  lines.push("Multi Select: M toggle | Drag empty in M mode for box select");
   lines.push("Layouts: Ctrl+ArrowDown back one | Ctrl+ArrowUp forward one");
   lines.push("Ctrl+[ / Ctrl+] reorder | Ctrl+Shift+[ / Ctrl+Shift+] send back/front");
   lines.push("Crop: Alt+Arrows add crop | Alt+Shift+Arrows reduce | Alt+0 reset");
   lines.push("Z Scan: Z toggle | , previous | . next");
+  lines.push(`Multi Select Status: ${multiSelectMode ? "ON" : "OFF"} | ${selectedImages.size} selected`);
 
   if (selectedImage) {
     const index = images.indexOf(selectedImage);
@@ -298,20 +408,29 @@ function sendToBack() {
 }
 
 function deleteSelectedImage() {
-  if (!selectedImage) return;
+  if (!selectedImages.size && !selectedImage) return;
 
-  const i = images.indexOf(selectedImage);
-  if (i === -1) return;
+  const toDelete = new Set(selectedImages);
+  if (!toDelete.size && selectedImage) toDelete.add(selectedImage);
+  if (!toDelete.size) return;
 
-  images.splice(i, 1);
-  selectedImage = null;
+  let firstDeletedIndex = images.length;
+  for (let i = images.length - 1; i >= 0; i--) {
+    if (toDelete.has(images[i])) {
+      firstDeletedIndex = Math.min(firstDeletedIndex, i);
+      images.splice(i, 1);
+    }
+  }
+
+  clearSelection();
 
   if (zScanMode) {
     if (!images.length) {
       zScanIndex = -1;
     } else {
-      zScanIndex = Math.min(i, images.length - 1);
+      zScanIndex = Math.min(firstDeletedIndex, images.length - 1);
       selectedImage = images[zScanIndex] || null;
+      if (selectedImage) selectedImages.add(selectedImage);
     }
   }
 
@@ -402,6 +521,7 @@ function loadLatestLayout() {
         .then(res => res.json())
         .then(data => {
           images.length = 0;
+          clearSelection();
 
           data.forEach(obj => {
             const img = new Image();
@@ -444,6 +564,7 @@ function loadLayoutByIndex(index) {
         .then(res => res.json())
         .then(data => {
           images.length = 0;
+          clearSelection();
 
           data.forEach(obj => {
             const img = new Image();
@@ -494,6 +615,16 @@ document.addEventListener("keydown", e => {
 
 window.addEventListener("keydown", e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  if (e.key.toLowerCase() === "m") {
+    e.preventDefault();
+    multiSelectMode = !multiSelectMode;
+    console.log("[multi] mode", multiSelectMode ? "ON" : "OFF");
+    marqueeActive = false;
+    draw();
+    return;
+  }
+
   if (!isDeleteKey(e) && !isBackspaceKey(e)) return;
 
   console.log("[delete] key pressed", {
@@ -683,6 +814,7 @@ let scale = 1;
 
 // Image selection + dragging
 let selectedImage = null;
+const selectedImages = new Set();
 let dragImageOffsetX = 0;
 let dragImageOffsetY = 0;
 
@@ -718,13 +850,27 @@ function draw() {
       ctx.strokeRect(obj.x, obj.y, drawW, drawH);
     }
 
-    // Draw selection outline
-    if (obj === selectedImage) {
-      ctx.strokeStyle = "rgba(0,255,255,0.8)";
-      ctx.lineWidth = 3 / scale;
+    // Draw selection outline(s)
+    if (selectedImages.has(obj) || obj === selectedImage) {
+      const isPrimary = obj === selectedImage;
+      ctx.strokeStyle = isPrimary ? "rgba(0,255,255,0.95)" : "rgba(0,180,255,0.7)";
+      ctx.lineWidth = (isPrimary ? 3 : 2) / scale;
       ctx.strokeRect(obj.x, obj.y, drawW, drawH);
     }
   });
+
+  if (marqueeActive) {
+    const x = Math.min(marqueeStartScreenX, marqueeCurrentScreenX);
+    const y = Math.min(marqueeStartScreenY, marqueeCurrentScreenY);
+    const w = Math.abs(marqueeCurrentScreenX - marqueeStartScreenX);
+    const h = Math.abs(marqueeCurrentScreenY - marqueeStartScreenY);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "rgba(0,180,255,0.14)";
+    ctx.strokeStyle = "rgba(0,220,255,0.9)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+  }
 
   updateToolBadge();
 }
@@ -767,49 +913,100 @@ let lastX = 0;
 let lastY = 0;
 
 canvas.addEventListener("mousedown", e => {
-  const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX - rect.left - canvas.width/2;
-  const cy = e.clientY - rect.top - canvas.height/2;
-
-  const wx = (cx / scale) - offsetX;
-  const wy = (cy / scale) - offsetY;
+  const { wx, wy } = screenToWorld(e.clientX, e.clientY);
 
   const hit = getImageAtWorldPos(wx, wy);
   if (hit) {
-    selectedImage = hit;
+    if (multiSelectMode) {
+      if (e.ctrlKey || e.metaKey) {
+        if (selectedImages.has(hit)) {
+          removeFromSelection(hit);
+        } else {
+          addToSelection(hit);
+        }
+      } else {
+        addToSelection(hit);
+      }
+    } else {
+      selectOnly(hit);
+    }
+
     if (zScanMode) setZScanFromSelection();
+    dragMode = "move";
+    dragging = true;
+    dragWorldX = wx;
+    dragWorldY = wy;
     dragImageOffsetX = wx - hit.x;
     dragImageOffsetY = wy - hit.y;
+    const moveTargets = selectedImages.size ? Array.from(selectedImages) : [hit];
+    dragSelectionStart = moveTargets.map(obj => ({ obj, x: obj.x, y: obj.y }));
+    draw();
+    return;
+  }
+
+  if (multiSelectMode) {
+    dragMode = "marquee";
+    marqueeActive = true;
+    marqueeAdditive = Boolean(e.shiftKey);
+    marqueeBaseSelection = new Set(selectedImages);
+    marqueeStartScreenX = e.clientX;
+    marqueeStartScreenY = e.clientY;
+    marqueeCurrentScreenX = e.clientX;
+    marqueeCurrentScreenY = e.clientY;
+    if (!marqueeAdditive) clearSelection();
     dragging = true;
     draw();
     return;
   }
 
-  selectedImage = null;
+  clearSelection();
+  dragMode = "pan";
   dragging = true;
   lastX = e.clientX;
   lastY = e.clientY;
   draw();
 });
 
-window.addEventListener("mouseup", () => dragging = false);
+window.addEventListener("mouseup", () => {
+  if (dragMode === "marquee") {
+    updateSelectionFromMarquee();
+    marqueeActive = false;
+  }
+  dragging = false;
+  dragMode = "none";
+  draw();
+});
 
 window.addEventListener("mousemove", e => {
   if (!dragging) return;
 
-  const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX - rect.left - canvas.width/2;
-  const cy = e.clientY - rect.top - canvas.height/2;
+  const { wx, wy } = screenToWorld(e.clientX, e.clientY);
 
-  const wx = (cx / scale) - offsetX;
-  const wy = (cy / scale) - offsetY;
-
-  if (selectedImage) {
-    selectedImage.x = wx - dragImageOffsetX;
-    selectedImage.y = wy - dragImageOffsetY;
+  if (dragMode === "move") {
+    if (dragSelectionStart.length > 1) {
+      const dx = wx - dragWorldX;
+      const dy = wy - dragWorldY;
+      dragSelectionStart.forEach(entry => {
+        entry.obj.x = entry.x + dx;
+        entry.obj.y = entry.y + dy;
+      });
+    } else if (selectedImage) {
+      selectedImage.x = wx - dragImageOffsetX;
+      selectedImage.y = wy - dragImageOffsetY;
+    }
     draw();
     return;
   }
+
+  if (dragMode === "marquee") {
+    marqueeCurrentScreenX = e.clientX;
+    marqueeCurrentScreenY = e.clientY;
+    updateSelectionFromMarquee();
+    draw();
+    return;
+  }
+
+  if (dragMode !== "pan") return;
 
   offsetX += (e.clientX - lastX) / scale;
   offsetY += (e.clientY - lastY) / scale;
@@ -879,6 +1076,12 @@ canvas.addEventListener("drop", e => {
         scale: 1,
         crop: defaultCrop()
       });
+
+      if (!multiSelectMode) {
+        selectOnly(images[images.length - 1]);
+      } else {
+        addToSelection(images[images.length - 1]);
+      }
 
       draw();
     };
