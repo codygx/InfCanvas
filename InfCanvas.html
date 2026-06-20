@@ -208,6 +208,8 @@ let dragMode = "none";
 let dragWorldX = 0;
 let dragWorldY = 0;
 let dragSelectionStart = [];
+let spacePanHeld = false;
+let panLockMode = false;
 
 let marqueeActive = false;
 let marqueeAdditive = false;
@@ -346,6 +348,7 @@ function updateToolBadge() {
   lines.push("Ctrl+S Save Layout | Ctrl+L Load Newest | Ctrl+Alt+E Export Selected PNG");
   lines.push("Delete/Backspace remove selected layer | Ctrl+Delete remove loaded layout file");
   lines.push("Multi Select: M toggle | Drag empty in M mode for box select");
+  lines.push(`Pan: Hold Space+Drag anywhere | P toggle pan lock (${panLockMode ? "ON" : "OFF"})`);
   lines.push("Layouts: Ctrl+ArrowDown back one | Ctrl+ArrowUp forward one");
   lines.push("Ctrl+[ / Ctrl+] reorder | Ctrl+Shift+[ / Ctrl+Shift+] send back/front");
   lines.push("Crop: Alt+Arrows add crop | Alt+Shift+Arrows reduce | Alt+0 reset");
@@ -614,7 +617,21 @@ document.addEventListener("keydown", e => {
 }, { capture: true });
 
 window.addEventListener("keydown", e => {
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Space") {
+    e.preventDefault();
+    spacePanHeld = true;
+    return;
+  }
+
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  if (e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    panLockMode = !panLockMode;
+    console.log("[pan] lock", panLockMode ? "ON" : "OFF");
+    draw();
+    return;
+  }
 
   if (e.key.toLowerCase() === "m") {
     e.preventDefault();
@@ -642,6 +659,12 @@ window.addEventListener("keydown", e => {
   e.preventDefault();
   deleteSelectedImage();
   console.log("[delete] selected image removed");
+}, { capture: true });
+
+window.addEventListener("keyup", e => {
+  if (e.code === "Space") {
+    spacePanHeld = false;
+  }
 }, { capture: true });
 
 window.addEventListener("keydown", e => {
@@ -913,7 +936,22 @@ let lastX = 0;
 let lastY = 0;
 
 canvas.addEventListener("mousedown", e => {
+  if (e.button === 1) {
+    e.preventDefault();
+  }
+
   const { wx, wy } = screenToWorld(e.clientX, e.clientY);
+  const forcePan = spacePanHeld || panLockMode || e.button === 1;
+
+  if (forcePan) {
+    dragMode = "pan";
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    marqueeActive = false;
+    draw();
+    return;
+  }
 
   const hit = getImageAtWorldPos(wx, wy);
   if (hit) {
