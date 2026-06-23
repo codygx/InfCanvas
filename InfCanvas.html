@@ -176,6 +176,20 @@ function resetCrop() {
   draw();
 }
 
+function rotateSelectedImage(angle) {
+  if (!selectedImage) return;
+  selectedImage.rotation = (selectedImage.rotation || 0) + angle;
+  selectedImage.rotation = selectedImage.rotation % 360;
+  if (selectedImage.rotation < 0) selectedImage.rotation += 360;
+  draw();
+}
+
+function resetRotation() {
+  if (!selectedImage) return;
+  selectedImage.rotation = 0;
+  draw();
+}
+
 function exportSelectedImage() {
   if (!selectedImage || !selectedImage.img) {
     console.log("No selected image to export");
@@ -352,14 +366,19 @@ function updateToolBadge() {
   lines.push("Layouts: Ctrl+ArrowDown back one | Ctrl+ArrowUp forward one");
   lines.push("Ctrl+[ / Ctrl+] reorder | Ctrl+Shift+[ / Ctrl+Shift+] send back/front");
   lines.push("Crop: Alt+Arrows add crop | Alt+Shift+Arrows reduce | Alt+0 reset");
+  lines.push("Rotate: Q rotate left (90°) | E rotate right (90°) | R reset rotation");
   lines.push("Z Scan: Z toggle | , previous | . next");
   lines.push(`Multi Select Status: ${multiSelectMode ? "ON" : "OFF"} | ${selectedImages.size} selected`);
 
   if (selectedImage) {
     const index = images.indexOf(selectedImage);
     const crop = getCropFor(selectedImage);
+    const rotation = selectedImage.rotation || 0;
     lines.push(`Selected layer: ${index + 1}/${images.length}`);
-    lines.push(`Crop L${crop.left} T${crop.top} R${crop.right} B${crop.bottom}`);
+    if (selectedImage.fileName) {
+      lines.push(`File: ${selectedImage.fileName}`);
+    }
+    lines.push(`Crop L${crop.left} T${crop.top} R${crop.right} B${crop.bottom} | Rotation: ${rotation}°`);
   } else {
     lines.push("Selected layer: none");
   }
@@ -484,6 +503,8 @@ function saveLayout() {
     x: img.x,
     y: img.y,
     scale: img.scale,
+    rotation: img.rotation || 0,
+    fileName: img.fileName || null,
     crop: normalizeCrop(img.crop || defaultCrop())
   }));
 
@@ -535,6 +556,8 @@ function loadLatestLayout() {
                 x: obj.x,
                 y: obj.y,
                 scale: obj.scale,
+                rotation: obj.rotation || 0,
+                fileName: obj.fileName || null,
                 crop: normalizeCrop(obj.crop || defaultCrop())
               });
               draw();
@@ -578,6 +601,8 @@ function loadLayoutByIndex(index) {
                 x: obj.x,
                 y: obj.y,
                 scale: obj.scale,
+                rotation: obj.rotation || 0,
+                fileName: obj.fileName || null,
                 crop: normalizeCrop(obj.crop || defaultCrop())
               });
               draw();
@@ -687,6 +712,24 @@ window.addEventListener("keydown", e => {
   if (zScanMode && e.key === ".") {
     e.preventDefault();
     stepZScan(1);
+    return;
+  }
+
+  if (e.key.toLowerCase() === "q") {
+    e.preventDefault();
+    if (selectedImage) rotateSelectedImage(-90);
+    return;
+  }
+
+  if (e.key.toLowerCase() === "e") {
+    e.preventDefault();
+    if (selectedImage) rotateSelectedImage(90);
+    return;
+  }
+
+  if (e.key.toLowerCase() === "r") {
+    e.preventDefault();
+    if (selectedImage) resetRotation();
     return;
   }
 
@@ -864,7 +907,18 @@ function draw() {
     const isNeighborLayer = zScanMode && (index === zScanIndex - 1 || index === zScanIndex + 1);
     ctx.globalAlpha = zScanMode ? (isScannedLayer ? 1 : (isNeighborLayer ? 0.55 : 0.1)) : 1;
 
-    ctx.drawImage(obj.img, srcX, srcY, srcW, srcH, obj.x, obj.y, drawW, drawH);
+    const rotation = (obj.rotation || 0) * Math.PI / 180;
+    if (rotation !== 0) {
+      ctx.save();
+      const centerX = obj.x + drawW / 2;
+      const centerY = obj.y + drawH / 2;
+      ctx.translate(centerX, centerY);
+      ctx.rotate(rotation);
+      ctx.drawImage(obj.img, srcX, srcY, srcW, srcH, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+    } else {
+      ctx.drawImage(obj.img, srcX, srcY, srcW, srcH, obj.x, obj.y, drawW, drawH);
+    }
     ctx.globalAlpha = 1;
 
     if (isNeighborLayer) {
@@ -920,9 +974,28 @@ function getImageAtWorldPos(wx, wy) {
   for (let i = images.length - 1; i >= 0; i--) {
     const obj = images[i];
     const { drawW, drawH } = getRenderBox(obj);
+    const rotation = (obj.rotation || 0) * Math.PI / 180;
 
-    if (wx >= obj.x && wx <= obj.x + drawW &&
-        wy >= obj.y && wy <= obj.y + drawH) {
+    // For simplicity, use axis-aligned bounding box even with rotation
+    // For precise rotation-aware hit testing, we'd need to transform the point
+    if (rotation !== 0) {
+      const centerX = obj.x + drawW / 2;
+      const centerY = obj.y + drawH / 2;
+      
+      // Transform point to object's local space
+      const dx = wx - centerX;
+      const dy = wy - centerY;
+      const cos = Math.cos(-rotation);
+      const sin = Math.sin(-rotation);
+      const localX = dx * cos - dy * sin;
+      const localY = dx * sin + dy * cos;
+      
+      if (localX >= -drawW / 2 && localX <= drawW / 2 &&
+          localY >= -drawH / 2 && localY <= drawH / 2) {
+        return obj;
+      }
+    } else if (wx >= obj.x && wx <= obj.x + drawW &&
+               wy >= obj.y && wy <= obj.y + drawH) {
       return obj;
     }
   }
@@ -1112,6 +1185,8 @@ canvas.addEventListener("drop", e => {
         x: worldX,
         y: worldY,
         scale: 1,
+        rotation: 0,
+        fileName: file.name,
         crop: defaultCrop()
       });
 
